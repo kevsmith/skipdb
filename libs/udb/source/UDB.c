@@ -2,7 +2,7 @@
 UDB ioDoc(
 		docCopyright("Steve Dekorte", 2004)
 		docLicense("BSD revised")
-		docObject("UDB")    
+		docObject("UDB")
 		docDescription("")
 		*/
 
@@ -15,10 +15,10 @@ UDB ioDoc(
 UDB *UDB_new(void)
 {
 	UDB *self = (UDB *)calloc(1, sizeof(UDB));
-	
+
 	self->index       = UDBIndex_new();
 	self->records     = UDBRecords_new();
-	
+
 	UDB_setPath_(self, "default");
 	return self;
 }
@@ -26,11 +26,11 @@ UDB *UDB_new(void)
 void UDB_free(UDB *self)
 {
 	UDB_close(self);
-	free(self->path);    
-	free(self->committedPath);    
-	
-	UDBIndex_free(self->index);   
-	UDBRecords_free(self->records);   
+	free(self->path);
+	free(self->committedPath);
+
+	UDBIndex_free(self->index);
+	UDBRecords_free(self->records);
 	free(self);
 }
 
@@ -47,7 +47,7 @@ void UDB_setPath_(UDB *self, const char *path)
 	self->path = strcpy((char *)realloc(self->path, strlen(path)+1), path);
 	self->committedPath = strcpy((char *)realloc(self->committedPath, strlen(path)+20), path);
 	strcat(self->committedPath, ".committed");
-	
+
 	UDBIndex_setPath_(self->index, path);
 	UDBRecords_setPath_(self->records, path);
 }
@@ -57,36 +57,36 @@ void UDB_setSecondaryPath_(UDB *self, const char *secondaryPath)
 {
 	UDBIndex_setPath_(self->index, self->path);
 	UDBIndex_setLogPath_(self->index, secondaryPath);
-	
+
 	UDBRecords_setPath_(self->records, secondaryPath);
 	UDBRecords_setLogPath_(self->records, self->path);
 }
 */
 
 
-char *UDB_path(UDB *self) 
-{ 
-	return self->path; 
+char *UDB_path(UDB *self)
+{
+	return self->path;
 }
 
 void UDB_open(UDB *self)
 {
 	self->committedFile = fopen(self->committedPath, "r+");
 
-	if (!self->committedFile) 
+	if (!self->committedFile)
 	{
 		self->committedFile = fopen(self->committedPath, "w");
 		fclose(self->committedFile);
 		self->committedFile = fopen(self->committedPath, "r+");
 	}
-	
-	
+
+
 	if (UDB_readCommitted(self) == 0)
 	{
 		JFile_clipLog(self->index->file);
 		JFile_clipLog(self->records->file);
 	}
-	
+
 	UDBIndex_open(self->index);
 	UDBRecords_open(self->records);
 	self->isOpen = 1;
@@ -105,7 +105,7 @@ void UDB_close(UDB *self)
 	self->isOpen = 0;
 }
 
-// transactions --------------------------------------------------- 
+// transactions ---------------------------------------------------
 
 int UDB_isInTransaction(UDB *self)
 {
@@ -135,30 +135,25 @@ void UDB_setCommittedFlag_(UDB *self, int flag)
 {
 	fseek(self->committedFile, 0, SEEK_SET);
 	fputc(flag, self->committedFile);
-	#ifdef F_FULLFSYNC
-		fcntl(fileno(self->committedFile), F_FULLFSYNC, NULL);
-	#else
-		#warning Linux doesn't support syncing to physical media
-		fsync(fileno(self->committedFile));
-	#endif
+	fsync(fileno(self->committedFile));
 }
 
 void UDB_commitTransaction(UDB *self)
 {
 	UDBIndex_preCommit(self->index);
 	UDBRecords_preCommit(self->records);
-	
+
 	UDB_setCommittedFlag_(self, 1);
-	
+
 	UDBIndex_commit(self->index);
 	UDBRecords_commit(self->records);
-	
+
 	UDB_setCommittedFlag_(self, 0);
-	
+
 	self->withinTransaction = 0;
 }
 
-// ops --------------------------------------------------- 
+// ops ---------------------------------------------------
 
 PID_TYPE UDB_nextPid(UDB *self)
 {
@@ -170,7 +165,7 @@ PID_TYPE UDB_allocPid(UDB *self)
 	return UDBIndex_allocPid(self->index);
 }
 
-void UDB_append_withPid_(UDB *self, Datum d, PID_TYPE pid) 
+void UDB_append_withPid_(UDB *self, Datum d, PID_TYPE pid)
 {
 	UDBRecord *record = UDBRecords_newRecord(self->records);
 	UDBRecord_pid_(record, pid);
@@ -178,7 +173,7 @@ void UDB_append_withPid_(UDB *self, Datum d, PID_TYPE pid)
 	UDBIndex_setPos_forPid_(self->index, UDBRecord_pos(record), pid);
 }
 
-PID_TYPE UDB_put_(UDB *self, Datum d) // returns pid 
+PID_TYPE UDB_put_(UDB *self, Datum d) // returns pid
 {
 	if (UDB_isInTransaction(self))
 	{
@@ -186,7 +181,7 @@ PID_TYPE UDB_put_(UDB *self, Datum d) // returns pid
 		UDB_append_withPid_(self, d, pid);
 		return pid;
 	}
-	
+
 	return 0;
 }
 
@@ -209,7 +204,7 @@ Datum UDB_at_(UDB *self, PID_TYPE pid)
 {
 	Datum d;
 	UDBRecord *record = UDB_recordAtPid_(self, pid);
-	
+
 	if (!record)
 	{
 		d.size = 0;
@@ -217,7 +212,7 @@ Datum UDB_at_(UDB *self, PID_TYPE pid)
 		//printf("missing record with pid %i\n", pid);
 		return d;
 	}
-	
+
 	return UDBRecord_readDatum(record);
 }
 
@@ -226,27 +221,27 @@ void UDB_removeAt_(UDB *self, PID_TYPE pid)
 	if (UDB_isInTransaction(self))
 	{
 		UDBRecord *record = UDB_recordAtPid_(self, pid);
-		
+
 		if (!record)
 		{
 			printf("UDB error: missing record with pid %" PID_FORMAT " for remove\n", pid);
 			record = UDB_recordAtPid_(self, pid);
 			return;
 		}
-		
+
 		UDBRecords_removeRecord_(self->records, record);
 		UDBIndex_setPos_forPid_(self->index, 0, pid);
 	}
 }
 
-// compact --------------------------------------------------- 
+// compact ---------------------------------------------------
 
 UDBRecord *UDB_firstEmptyRecord(UDB *self)
 {
 	UDBRecord *record = UDBRecords_firstRecord(self->records);
-	
+
 	while (record)
-	{	
+	{
 		if (UDBRecord_isEmpty(record)) return record;
 		record = UDBRecords_nextRecord(self->records);
 	}
@@ -257,13 +252,13 @@ int UDB_compact(UDB *self)
 {
 	int count = 0;
 	int compactions;
-	
-	do 
+
+	do
 	{
 		compactions = UDB_compactStepFor_(self, 0.1);
 		count += compactions;
 	} while (compactions);
-	
+
 	return count;
 }
 
@@ -275,14 +270,14 @@ int UDB_compactStep(UDB *self)
 }
 
 int UDB_compactStepFor_(UDB *self, double maxSeconds)
-{   
+{
 	UDBRecord *firstEmptyRecord = UDBRecords_firstEmptyRecord(self->records);
-	
+
 	if (!firstEmptyRecord)
 	{
 		return 0;
 	}
-	
+
 	if (!UDBRecord_isEmpty(firstEmptyRecord))
 	{
 		printf("firstEmptyRecord not empty!\n");
@@ -290,41 +285,41 @@ int UDB_compactStepFor_(UDB *self, double maxSeconds)
 		UDBRecord_isEmpty(firstEmptyRecord);
 		exit(1);
 	}
-	
+
 #ifdef DEBUG
-	printf("empty record pid: %i pos: %i size: %i isEmpty: %i\n", 
-		  UDBRecord_pid(firstEmptyRecord), 
-		  UDBRecord_pos(firstEmptyRecord), 
-		  UDBRecord_totalSize(firstEmptyRecord), 
+	printf("empty record pid: %i pos: %i size: %i isEmpty: %i\n",
+		  UDBRecord_pid(firstEmptyRecord),
+		  UDBRecord_pos(firstEmptyRecord),
+		  UDBRecord_totalSize(firstEmptyRecord),
 		  UDBRecord_isEmpty(firstEmptyRecord));
 #endif
-	    
+
 	if (firstEmptyRecord)
 	{
 		UDBRecord *record = UDBRecords_recordAfter_(self->records, firstEmptyRecord);
-		
+
 		if (!record)
 		{
-			// reached end of file 
+			// reached end of file
 			PID_TYPE size = UDBRecord_pos(firstEmptyRecord);
 			UDBRecords_truncate_(self->records, size);
 			return 0;
 		}
-		
+
 #ifdef DEBUG
-		printf("next  record pid: %i pos: %i size: %i isEmpty: %i\n\n", 
-			  UDBRecord_pid(record), 
-			  UDBRecord_pos(record), 
-			  UDBRecord_totalSize(record), 
+		printf("next  record pid: %i pos: %i size: %i isEmpty: %i\n\n",
+			  UDBRecord_pid(record),
+			  UDBRecord_pos(record),
+			  UDBRecord_totalSize(record),
 			  UDBRecord_isEmpty(record));
 #endif
-		
+
 		UDB_beginTransaction(self);
-		
+
 		if (UDBRecord_isEmpty(record))
 		{
-			// coalese this empty record into the first empty record 
-			PID_TYPE newSize = UDBRecord_totalSize(firstEmptyRecord) 
+			// coalese this empty record into the first empty record
+			PID_TYPE newSize = UDBRecord_totalSize(firstEmptyRecord)
 			- sizeof(UDBRecordHeader) + UDBRecord_totalSize(record);
 			UDBRecord_size_(firstEmptyRecord, newSize);
 			UDBRecord_saveHeader(firstEmptyRecord);
@@ -335,7 +330,7 @@ int UDB_compactStepFor_(UDB *self, double maxSeconds)
 		}
 		else
 		{
-			// swap places with the first empty record 
+			// swap places with the first empty record
 			PID_TYPE oldEmptyPos = UDBRecord_pos(firstEmptyRecord);
 			PID_TYPE newEmptyPos = oldEmptyPos + UDBRecord_totalSize(record);
 			UDBRecords_firstEmptyRecordPos_(self->records, newEmptyPos);
@@ -348,9 +343,9 @@ int UDB_compactStepFor_(UDB *self, double maxSeconds)
 			UDBIndex_setPos_forPid_(self->index, newEmptyPos, UDBRecord_pid(firstEmptyRecord));
 			UDBIndex_setPos_forPid_(self->index, oldEmptyPos, UDBRecord_pid(record));
 		}
-		
+
 		UDB_commitTransaction(self);
-		
+
 		return 1;
 	}
 	return 0;
@@ -360,9 +355,9 @@ void UDB_show(UDB *self)
 {
 	UDBRecord *record = UDBRecords_firstRecord(self->records);
 	printf("UDB Records:\n");
-	
+
 	while (record)
-	{	
+	{
 		UDBRecord_show(record);
 		record = UDBRecords_nextRecord(self->records);
 	}
@@ -372,4 +367,3 @@ void UDB_showIndex(UDB *self)
 {
 	UDBIndex_show(self->index);
 }
-
